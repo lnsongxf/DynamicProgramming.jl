@@ -34,7 +34,7 @@ function dynamic_programming(reward::Function,
                              transition!::Function,
                              initial::Function,
                              beta::Real,
-                             grid::Gridspace{T}
+                             grid::Gridspace{T},
                              solver::MathProgBase.AbstractMathProgSolver = IpoptSolver(print_level=0, tol=1e-3)
                              )
 

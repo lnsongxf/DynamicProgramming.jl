@@ -1,4 +1,4 @@
-using Placeholder
+using DynamicProgramming
 
 # samples = abs(randn(100))
 # reward(state, control)            = log(state[1] - control[1])
