@@ -22,11 +22,7 @@ end
 
 function MathProgBase.eval_grad_f(bell::BellmanIteration, g, k)
     ForwardDiff.gradient!(g, k->bell.d.reward(bell.state, k), k)
-
-    _g = bell.d.beta*expected_bellman_value_gradient(bell.d, bell.valuefn, bell.samples, bell.state, k)
-    for i = eachindex(g)
-        @inbounds g[i] = g[i] + _g[i]
-    end
+    g[:] += bell.d.beta*expected_bellman_gradient(bell.d, bell.valuefn, bell.samples, bell.state, k)
     return g
 end
 

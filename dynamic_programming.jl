@@ -4,7 +4,7 @@ typealias ValueFunction Any
 
 immutable UnconstrainedDynamicProgramming{T} <: DynamicProgramming{T}
     reward::Function          # two argument function of the form reward(state, control)
-    transition::Function      # three argument mutating function of the form transition(state, control, shock)
+    transition!::Function      # three argument mutating function of the form transition(state, control, shock)
     initial::Function         # specifies a feasible point
     beta::Real                # discounting factor
     grid::GridSpace{T}
@@ -15,6 +15,7 @@ end
 
 num_const(d::DynamicProgramming) = 0
 grid_range{T}(grid::Tuple{Vararg{FloatRange{T}}}) = [minimum(r) for r in grid], [maximum(r) for r in grid]
+
 function expected_bellman_value{T}(d::DynamicProgramming{T},
                                    valuefn::ValueFunction,
                                    samples::Vector,
@@ -22,31 +23,32 @@ function expected_bellman_value{T}(d::DynamicProgramming{T},
                                    control)
     new_state = Vector{T}(d.state_dim)
     v = zero(T)
-    for (i,s) in enumerate(samples)
-        new_state = d.transition(state, control, s)
-        v += try valgrad(valuefn, new_state...)[1] catch;  v end
+    for shock in samples
+        d.transition!(state, control, shock, new_state)
+        v += valuefn[ new_state... ]
     end
     return v / length(samples)
 end
 
 
-function expected_bellman_value_gradient{T}(d::DynamicProgramming{T},
-                                            valuefn::ValueFunction,
-                                            samples::ValueFunction,
-                                            state,
-                                            control)
+function expected_bellman_gradient{T}(d::DynamicProgramming{T},
+                                      valuefn::ValueFunction,
+                                      samples::ValueFunction,
+                                      state,
+                                      control)
 
     new_state = Vector(d.state_dim)
     g  = zeros(T, d.state_dim)
+    _g = zeros(T, d.state_dim)
     for shock in samples
-        new_state = d.transition(state, control, shock)
-        g += try valgrad(valuefn, new_state...)[2] catch; g end
+        d.transition!(state, control, shock, new_state)
+        g += Interpolations.gradient!(_g, valuefn, new_state...)
     end
     return g / length(samples)
 end
 
-@inline function optimize_bellman(d::DynamicProgramming,
-                          value_fn::ValueFunction,
+function optimize_bellman(d::DynamicProgramming,
+                          valuefn::ValueFunction,
                           samples::Vector,
                           state::Vector)
     n, m = d.control_dim, num_const(d)
@@ -71,28 +73,20 @@ end
     return val, control
 end
 
+function evaluate_bellman_on_grid{T}(d::DynamicProgramming{T}, valuefn, samples)
+    points_per_dimension = [ length(j) for j in d.grid ]
+    vals = Array{T}(points_per_dimension...)
+    args = Array{Vector{T}}(points_per_dimension...)
 
-# initial_value{T}(d::DynamicProgramming{T}) = zero(T)
+    for (i, state) in enumerate(product(d.grid...))
+        @time vals[i], args[i] = optimize_bellman(d, valuefn, samples, collect(state))
+    end
 
-# function bellman_recursion(d::DynamicProgramming,
-#                           samples::Vector,   # iid samples of the exogenous shocks
-#                           iterates::Integer) # number of times we iterate with the Bellman operator
+    return vals, args
+end
 
-#     (iterates == 1) && return bellman_operator(d, samples, initial_value(d))
-
-#     value_fn, policy_fn = bellman_recursion(d, samples, iterates-1)
-
-#     return bellman_operator(d, samples, value_fn)
-# end
-
-
-
-# function bellman_operator(d::DynamicProgramming,
-#                           value_fn::ValueFunction,
-#                           samples::Vector)  # iid samples of the exogenous shocks
-
-#     vals = evaluate_points(x->optimize_bellman(d, samples, value_fn, x), d.grid)
-#     itp  = interpolate!(grid, vals, Gridded(Linear()))
-
-#     return itp
-# end
+function approximate_bellman(d::DynamicProgramming, valuefn, samples)
+    vals, args  = evaluate_bellman_on_grid(d, valuefn, samples)
+    new_valuefn = scale(interpolate(vals, BSpline(Linear()), OnGrid()), d.grid...)
+    return new_valuefn
+end
