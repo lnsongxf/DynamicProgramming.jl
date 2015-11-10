@@ -1,11 +1,11 @@
 type BellmanIteration <: MathProgBase.AbstractNLPEvaluator
-    d::DynamicProgramming
+    d::AbstractDynamicProgramming
     valuefn
     samples::Vector
     state::Vector                   # state vector
 end
 
-BellmanIteration(d::DynamicProgramming, valuefn, samples::Vector, state::Number) = BellmanIteration(d, valuefn, samples, collect(state))
+BellmanIteration(d::AbstractDynamicProgramming, valuefn, samples::Vector, state::Number) = BellmanIteration(d, valuefn, samples, collect(state))
 
 MathProgBase.features_available(d::BellmanIteration) = [:Grad, :Jac]
 
