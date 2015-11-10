@@ -3,6 +3,7 @@ typealias GridSpace{T<:AbstractFloat} Tuple{Vararg{Range{T}}}
 typealias ValueFunction Interpolations.AbstractInterpolation
 
 abstract AbstractDynamicProgramming{T<:AbstractFloat}
+typealias ADP{T} AbstractDynamicProgramming{T}
 
 type UnconstrainedDynamicProgramming{T} <: AbstractDynamicProgramming{T}
     reward::Function          # two argument function of the form reward(state, control)
@@ -19,9 +20,9 @@ type UnconstrainedDynamicProgramming{T} <: AbstractDynamicProgramming{T}
                                                 initial,
                                                 beta,
                                                 grid::GridSpace{T},
-                                                state_dim::Int,
-                                                control_dim::Int,
-                                                solver::MathProgBase.AbstractMathProgSolver = IpoptSolver(print_level=0, tol=1e-3))
+                                                state_dim,
+                                                control_dim,
+                                                solver = IpoptSolver(print_level=0, tol=1e-3))
 
         @assert state_dim == length(grid) "State discretization dimension must match no. of state dimensions: got
             grid dimensions = $(length(grid)), state dimensions = $state_dim"
@@ -30,12 +31,12 @@ type UnconstrainedDynamicProgramming{T} <: AbstractDynamicProgramming{T}
     end
 end
 
-function dynamic_programming(reward::Function,
-                             transition!::Function,
-                             initial::Function,
-                             beta::Real,
-                             grid::Gridspace{T}
-                             solver::MathProgBase.AbstractMathProgSolver = IpoptSolver(print_level=0, tol=1e-3)
+function dynamic_programming{T}(reward::Function,
+                                transition!::Function,
+                                initial::Function,
+                                beta::Real,
+                                grid::GridSpace{T},
+                                solver::MathProgBase.AbstractMathProgSolver = IpoptSolver(print_level=0, tol=1e-3)
                              )
 
     state_dim   = length(grid)
@@ -43,11 +44,12 @@ function dynamic_programming(reward::Function,
     UnconstrainedDynamicProgramming{T}(reward, transition!, initial, beta, grid, state_dim, control_dim)
 end
 
+num_const(d::UnconstrainedDynamicProgramming) = 0
 
-num_const(d::AbstractDynamicProgramming) = 0
-grid_range{T}(grid::Tuple{Vararg{FloatRange{T}}}) = [minimum(r) for r in grid], [maximum(r) for r in grid]
+grid_range{T}(grid::GridSpace{T}) = [minimum(r) for r in grid], [maximum(r) for r in grid]
+num_grid_points{T}(grid::GridSpace{T}) = prod([length(r) for r in grid])
 
-function expected_bellman_value{T}(d::AbstractDynamicProgramming{T},
+function expected_bellman_value{T}(d::ADP{T},
                                    valuefn::ValueFunction,
                                    samples::Vector,
                                    state,
@@ -61,23 +63,35 @@ function expected_bellman_value{T}(d::AbstractDynamicProgramming{T},
     return v / length(samples)
 end
 
-function expected_bellman_gradient{T}(d::AbstractDynamicProgramming{T},
+function expected_bellman_gradient!{T}(d::ADP{T},
+                                      valuefn::ValueFunction,
+                                      samples::Vector,
+                                      state,
+                                      control,
+                                      g::Vector{T})
+
+    new_state = Vector(d.state_dim)
+    _g = similar(g)
+    coeff = d.beta / length(samples)
+
+    for shock in samples
+        d.transition!(state, control, shock, new_state)
+        g[:] += Interpolations.gradient!(_g, valuefn, new_state...) * coeff
+    end
+    return g
+end
+
+function expected_bellman_gradient{T}(d::ADP{T},
                                       valuefn::ValueFunction,
                                       samples::Vector,
                                       state,
                                       control)
-
-    new_state = Vector(d.state_dim)
     g  = zeros(T, d.state_dim)
-    _g = zeros(T, d.state_dim)
-    for shock in samples
-        d.transition!(state, control, shock, new_state)
-        g += Interpolations.gradient!(_g, valuefn, new_state...)
-    end
-    return g / length(samples)
+    expected_bellman_gradient!(d, valuefn, samples, state, control, g)
+    return g
 end
 
-function optimize_bellman(d::AbstractDynamicProgramming,
+function optimize_bellman(d::ADP,
                           valuefn::ValueFunction,
                           samples::Vector,
                           state::Vector)
@@ -104,26 +118,26 @@ function optimize_bellman(d::AbstractDynamicProgramming,
     return val, control
 end
 
-function evaluate_bellman_on_grid{T}(d::AbstractDynamicProgramming{T}, valuefn, samples; verbose = false)
+function evaluate_bellman_on_grid{T}(d::ADP{T}, valuefn, samples; verbose = false)
     points_per_dimension = [ length(j) for j in d.grid ]
     vals = Array{T}(points_per_dimension...)
     args = Array{Vector{T}}(points_per_dimension...)
-
     for (i, state) in enumerate(product(d.grid...))
         vals[i], args[i] = optimize_bellman(d, valuefn, samples, collect(state))
+        verbose && @show i, vals[i], state[i]
     end
 
     return vals, args
 end
 
-function approximate_bellman(d::AbstractDynamicProgramming, valuefn, samples)
-    vals, args  = evaluate_bellman_on_grid(d, valuefn, samples)
-    new_valuefn = scale(interpolate(vals, BSpline(Linear()), OnGrid()), d.grid...)
+function approximate_bellman(d::ADP, valuefn, samples; verbose = false)
+    vals, args  = evaluate_bellman_on_grid(d, valuefn, samples; verbose = verbose)
+    new_valuefn = scale(interpolate!(vals, BSpline(Linear()), OnGrid()), d.grid...)
     return new_valuefn
 end
 
 # method to supply the initial guess, use the reward function with some state
-function approximate_bellman{T}(d::AbstractDynamicProgramming{T}, samples::Vector)
+function approximate_bellman{T}(d::ADP{T}, samples::Vector)
     some_state   = T[ rand(r) for r in d.grid ]
     some_control = d.initial(some_state)
 
@@ -133,7 +147,7 @@ function approximate_bellman{T}(d::AbstractDynamicProgramming{T}, samples::Vecto
         vals[i] = d.reward(collect(x), some_control)
     end
 
-    new_valuefn = scale(interpolate(vals, BSpline(Linear()), OnGrid()), d.grid...)
+    new_valuefn = scale(interpolate!(vals, BSpline(Linear()), OnGrid()), d.grid...)
 
     return new_valuefn
 end

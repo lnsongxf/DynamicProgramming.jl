@@ -1,11 +1,11 @@
 type BellmanIteration <: MathProgBase.AbstractNLPEvaluator
-    d::AbstractDynamicProgramming
+    d::ADP
     valuefn
     samples::Vector
     state::Vector                   # state vector
 end
 
-BellmanIteration(d::AbstractDynamicProgramming, valuefn, samples::Vector, state::Number) = BellmanIteration(d, valuefn, samples, collect(state))
+BellmanIteration(d::ADP, valuefn, samples::Vector, state::Number) = BellmanIteration(d, valuefn, samples, collect(state))
 
 MathProgBase.features_available(d::BellmanIteration) = [:Grad, :Jac]
 
@@ -22,7 +22,7 @@ end
 
 function MathProgBase.eval_grad_f(bell::BellmanIteration, g, k)
     ForwardDiff.gradient!(g, k->bell.d.reward(bell.state, k), k)
-    g[:] += bell.d.beta*expected_bellman_gradient(bell.d, bell.valuefn, bell.samples, bell.state, k)
+    expected_bellman_gradient!(bell.d, bell.valuefn, bell.samples, bell.state, k, g)
     return g
 end
 
