@@ -29,11 +29,9 @@ end
 MathProgBase.jac_structure(d::BellmanIteration) = [],[]
 
 function MathProgBase.eval_jac_g(bell::BellmanIteration, J, )
-    # return []
     ForwardDiff.jacobian!(j, k->bell.d.constraint(bell.state, k), k)
 end
 
 function MathProgBase.eval_g(bell::BellmanIteration, g, k)
-    # return []
     bell.d.constraint(bell.state, control, g)
 end
