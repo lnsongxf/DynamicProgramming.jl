@@ -2,7 +2,7 @@ type BellmanIteration <: MathProgBase.AbstractNLPEvaluator
     d::AbstractDynamicProgramming
     valuefn::ValueFunction
     samples::Vector
-    state::Vector   # current state vector
+    state::Vector       # current state vector
 end
 
 BellmanIteration(d::AbstractDynamicProgramming, valuefn, samples::Vector, state::Number) = BellmanIteration(d, valuefn, samples, collect(state))
@@ -19,7 +19,7 @@ MathProgBase.eval_f(bell::BellmanIteration, u)         = bellman_value(bell.d, b
 MathProgBase.eval_grad_f(bell::BellmanIteration, g, u) = bellman_gradient!(bell.d, bell.valuefn, bell.samples, bell.state, u, g)
 MathProgBase.jac_structure(d::BellmanIteration)        = [],[]
 MathProgBase.eval_jac_g(bell::BellmanIteration, j, u)  = nothing
-MathProgBase.eval_g(bell::BellmanIteration, g, k)      = nothing
+MathProgBase.eval_g(bell::BellmanIteration, g, u)      = nothing
 
 function optimize_bellman{T}(d::AbstractDynamicProgramming{T},
                              valuefn::ValueFunction,

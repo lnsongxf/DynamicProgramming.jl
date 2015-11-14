@@ -1,6 +1,6 @@
-typealias GridSpace{T<:AbstractFloat} Tuple{Vararg{Range{T}}}
 abstract AbstractDynamicProgramming{T<:AbstractFloat}
 
+typealias GridSpace{T<:AbstractFloat} Tuple{Vararg{Range{T}}}
 typealias ControlBounds{T} Tuple{Vector{T}, Vector{T}}
 
 type UnconstrainedDynamicProgramming{T} <: AbstractDynamicProgramming{T}
@@ -50,8 +50,7 @@ function Base.show(io::IO, d::AbstractDynamicProgramming)
     @printf io " discount factor: %.2f\n" d.beta
     @printf io " discretization: %s (%d points)\n" grid_range grid_points
     @printf io " approximation: %s\n" typeof(d.interp)
-    @printf io " state dimension: %d\n"   d.state_dim
-    @printf io " control dimension: %d\n"   d.control_dim
+    @printf io " dimension: %d state(s), %d control(s)\n"   d.state_dim d.control_dim
     @printf io " control bounds: %sᵀ ≤ 𝑢 ≤ %sᵀ\n" first(d.control_bounds) last(d.control_bounds)
     @printf io " solver: %s\n" typeof(d.solver)
 
@@ -69,7 +68,7 @@ function dynamic_programming{T}(reward::Function,
                                 initial::Function,
                                 beta::Real,
                                 grid::Union{Range{T}, GridSpace{T}},
-                                control_dim::Int = isa(grid, GridSpace) ? length(grid) : 1; # defaults to the same as the state dimension as inferred via the grid
+                                control_dim::Int = isa(grid, GridSpace) ? length(grid) : 1; # defaults to the state dimension, as inferred via the grid
                                 control_bounds::ControlBounds{T} = (fill(typemin(T), control_dim), fill(typemax(T), control_dim)),
                                 solver::MathProgBase.AbstractMathProgSolver = Ipopt.IpoptSolver(print_level = 0, tol = 1e-2, max_iter=500),
                                 interpolation::Interpolations.Interpolations.BSpline = BSpline(Linear())

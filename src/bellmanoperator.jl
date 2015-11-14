@@ -166,8 +166,6 @@ function fixed_iter!{T}(f::Function,
     return state
 end
 
-supnorm(u::ValueFunction, v::ValueFunction) = maximum(abs(u - v))
-
 function iterate_bellman_operator{T}(d::AbstractDynamicProgramming{T}, shocks::Vector, t::Integer; verbose = false)
     init  = approximate_bellman_operator(d, shocks)
 
@@ -176,7 +174,7 @@ function iterate_bellman_operator{T}(d::AbstractDynamicProgramming{T}, shocks::V
         new_state = approximate_bellman_operator(d, old_state, shocks)
 
         if verbose
-            @printf "iteration: %s\tsup norm: %0.4f\n" pretty_integer(i) supnorm(old_state, new_state)
+            @printf "iteration: %s \tfrobenius norm: %0.4f\t\tapprox. sup norm: %0.4f\n" pretty_integer(i) vecnorm(old_state - new_state) maximum(abs(old_state - new_state))
         end
 
         old_state = new_state
