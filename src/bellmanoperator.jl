@@ -1,8 +1,8 @@
-typealias ValueFunction Interpolations.AbstractInterpolation
+typealias ValueFunction Interpolations.ScaledInterpolation
 
-function bellman_value{T}(d::ADP{T},
+function bellman_value{T}(d::AbstractDynamicProgramming{T},
                           valuefn::ValueFunction,
-                          samples::Vector,
+                          shocks::Vector,
                           state::Vector{T},
                           control::Vector{T}
                           )
@@ -10,9 +10,9 @@ function bellman_value{T}(d::ADP{T},
     v = zero(T)
 
     v = d.reward(state, control)
-    v /= (coeff = d.beta / length(samples))
+    v /= (coeff = d.beta / length(shocks))
 
-    for shock in samples
+    for shock in shocks
        new_state[:] = d.transition(state, control, shock)
         v += valuefn[ new_state... ]
     end
@@ -24,70 +24,46 @@ end
 
 # n.b. these return beta*∇E[v(...)] since this is more useful
 # in building ∇reward(...) + beta*∇E[v(...)]
-function bellman_gradient!{T}(d::ADP{T},
+function bellman_gradient!{T}(d::AbstractDynamicProgramming{T},
                               valuefn::ValueFunction,
-                              samples::Vector,
+                              shocks::Vector,
                               state::Vector{T},
                               control::Vector{T},
                               g::Vector{T}
                               )
     new_state = Vector{T}(d.state_dim)
     jac       = Matrix{T}(d.state_dim, d.control_dim)
-    _g        = Vector{T}(d.state_dim)
+    vfn_g     = Vector{T}(d.state_dim)
 
     ForwardDiff.gradient!(g, u->d.reward(state, u), control)
-    g[:] /= (coeff = d.beta / length(samples))
+    g[:] /= (coeff = d.beta / length(shocks))
     i = 1
-    for ε in samples
+    for ε in shocks
         new_state[:] = d.transition(state, control, ε)
+
         ForwardDiff.jacobian!(jac, u->d.transition(state, u, ε), control)
-        g[:] += jac'*Interpolations.gradient!(_g, valuefn, new_state...)
+
+        Interpolations.gradient!(vfn_g, valuefn, new_state...)
+        g[:] += jac' * vfn_g
     end
     g[:] *= coeff
     return g
 end
 
-function bellman_gradient{T}(d::ADP{T},
+function bellman_gradient{T}(d::AbstractDynamicProgramming{T},
                              valuefn::ValueFunction,
-                             samples::Vector,
+                             shocks::Vector,
                              state::Vector{T},
                              control::Vector{T}
                              )
     g  = Vector{T}(d.control_dim)
-    return bellman_gradient!(d, valuefn, samples, state, control, g)
-end
-
-function optimize_bellman{T}(d::ADP{T},
-                             valuefn::ValueFunction,
-                             samples::Vector,
-                             state::Vector{T}
-                             )
-
-    n, m = d.control_dim, num_const(d)
-    l, u = d.control_bounds
-    lb = fill(-Inf, m)
-    ub = fill(+Inf, m)
-
-    model   = MathProgBase.model(d.solver)
-    problem = BellmanIteration(d, valuefn, samples, state)
-
-    MathProgBase.loadnonlinearproblem!(model, n, m, l, u, lb, ub, :Max, problem)
-
-    # solve the model
-    MathProgBase.setwarmstart!(model, d.initial(state))
-    MathProgBase.optimize!(model)
-
-    MathProgBase.status(model) == :Optimal || warn("Solver returned $(MathProgBase.status(model))")
-    val     = MathProgBase.getobjval(model)
-    control = MathProgBase.getsolution(model)
-
-    return val, control
+    return bellman_gradient!(d, valuefn, shocks, state, control, g)
 end
 
 # this function is the most equivalent in definition to the mathematical bellman operator
-function approximate_bellman_operator{T}(d::ADP{T},
+function approximate_bellman_operator{T}(d::AbstractDynamicProgramming{T},
                                          valuefn::ValueFunction,
-                                         samples::Vector;
+                                         shocks::Vector;
                                          verbose = false
                                          )
     length_per_dim = map(length, d.grid)
@@ -95,7 +71,7 @@ function approximate_bellman_operator{T}(d::ADP{T},
     args = Array{Vector{T}}(length_per_dim...)
     for (i, state) in enumerate(product(d.grid...))
         verbose && @show i, state
-        vals[i], args[i] = optimize_bellman(d, valuefn, samples, collect(state))
+        vals[i], args[i] = optimize_bellman(d, valuefn, shocks, collect(state))
     end
 
     new_valuefn = scale(interpolate!(vals, BSpline(Linear()), OnGrid()), d.grid...)
@@ -104,7 +80,7 @@ end
 
 # method to supply the initial guess for the bellman,
 # use the reward function with some state
-function approximate_bellman_operator{T}(d::ADP{T}, samples::Vector)
+function approximate_bellman_operator{T}(d::AbstractDynamicProgramming{T}, shocks::Vector)
     length_per_dim = map(length, d.grid)
     vals           = Array{T}(length_per_dim...)
 
@@ -112,7 +88,7 @@ function approximate_bellman_operator{T}(d::ADP{T}, samples::Vector)
         @inbounds vals[i] = zero(T)
     end
 
-    new_valuefn = scale(interpolate!(vals, BSpline(Linear()), OnGrid()), d.grid...)
+    new_valuefn = scale(interpolate!(vals, d.interp, OnGrid()), d.grid...)
 
     return new_valuefn
 end
@@ -121,7 +97,7 @@ end
 typealias IterationState{T} Tuple{Int, T, Float64, Int, Float64, Base.GC_Diff}
 typealias History{T}        Vector{IterationState{T}}
 
-function pretty_integer_count(t::Int)
+function pretty_integer(t::Int)
     @assert t >= 0 "What is this"
     if    t < 10^2
         @sprintf "%d" t
@@ -192,49 +168,19 @@ end
 
 supnorm(u::ValueFunction, v::ValueFunction) = maximum(abs(u - v))
 
-function iterate_bellman_operator{T}(d::ADP{T}, samples::Vector, t::Integer; print_level = 0)
-    init  = approximate_bellman_operator(d, samples)
-    hist  = History{ValueFunction}()
-    final = fixed_iter!(t, init, print_level, 0, hist) do valuefn
-        return value, argmax = approximate_bellman_operator(d, valuefn, samples)
+function iterate_bellman_operator{T}(d::AbstractDynamicProgramming{T}, shocks::Vector, t::Integer; verbose = false)
+    init  = approximate_bellman_operator(d, shocks)
+
+    old_state = init
+    for i = 1:t
+        new_state = approximate_bellman_operator(d, old_state, shocks)
+
+        if verbose
+            @printf "iteration: %s\tsup norm: %0.4f\n" pretty_integer(i) supnorm(old_state, new_state)
+        end
+
+        old_state = new_state
     end
 
-    return final
+    return old_state
 end
-
-
-# h = History{Int}()
-# push!(h, (10, x...))
-# push!(h, (3*10^6, x...))
-
-# verbose(1, h[1:1]); verbose(1, h[1:2])
-
-# i = 10
-# x = @sprintf "Iteration %s\n" rpad(string(i," "), 40, '=')
-
-# function fixed_iter!{T}(f::Function,
-#                         t::Integer,
-#                         init::T,
-#                         verb::Int = 0,
-#                         trace::Int = 0,
-#                         history::History{T} = History{T}())
-#     state = init::T
-
-#     for i = 1:t
-#         timed = @timed f(state)
-
-#         tr = form_history(i, timed)
-
-
-#         if trace !== 0 || i % trace == 0
-#             push!(history, tr)
-#         end
-
-#         verbose(verb, tr)
-
-#         state = tr[2]
-#     end
-
-#     return state
-# end
-
