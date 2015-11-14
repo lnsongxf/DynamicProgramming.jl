@@ -1,35 +1,31 @@
 using DynamicProgramming
 
-# samples = abs(randn(100))
-# reward(state, control)            = log(state[1] - control[1])
-# transition(state, control, shock) = shock[1]*state[1]*control[1]^(1/3)
-# initial(state) = zero(state) # specifies a feasible control for a given state
+Gadfly.plot(f::Interpolations.AbstractInterpolation, args...) = Gadfly.plot(x->f[x], args...)
 
-# d = UnconstrainedDynamicProgramming(reward, transition, initial, 0.8, (10.0:1:100.0,), 1, 1, IpoptSolver(print_level=0, tol=1e-3))
+α = 1/3
+β = 0.98
 
-# state = [1.0]
-# control = [0.5]
+# reward(x, u) = try
+#         log(x[1] - u[1])
+#     catch
+#         warn("Reward function not defined")
+#         @show x[1], u[1], x[1]- u[1]
+#         return 0
+#     end
 
-# vals      = evaluate_points(x->d.reward(x, 0.0), d.grid)
-# valuefn   = CoordInterpGrid(d.grid, vals, BCnil, InterpQuadratic)
-# new_state = Vector{Float64}(d.state_dim)
+reward(x, u)        = log(x[1] - u[1])
+transition(x, u, ε) = cbrt(ε^3 .* u)
+initial(state)      = collect(state[1]/2) # specifies a feasible control for a given state
 
-# @time expected_bellman_value(d, valuefn, samples, 2.0, 1.0)
+rti     = (reward, transition, initial)
+solver  = Ipopt.IpoptSolver(print_level=0, tol=1e-2, max_iter=500)
+d1      = UnconstrainedDynamicProgramming{Float64}(rti..., β, 0.5:0.1:10.0, 1, 1,
+                control_bounds=(fill(0.0, 1), fill(Inf, 1)), solver=solver)
 
-samples = abs(randn(100))
-reward(state, control)                        = - dot(control, control) - dot(state,state)
-transition!(state, control, shock, new_state) = (new_state[:] = state)
-initial(state)                                = zero(state) # specifies a feasible control for a given state
+samples = rand(LogNormal(), 100)
+vfn     = iterate_bellman_operator(d1, samples, 10, print_level = 1)
 
-d1 = UnconstrainedDynamicProgramming{Float64}(reward, transition!, initial, 0.8, (-5:0.95:5.0,-5:0.95:5.0), 2, 2, IpoptSolver(print_level=1, tol=1e-3))
-d = d1
+plot(vfn, 0.5,10)
 
-valuefn = approximate_bellman(d1, samples)
+Iterations.
 
-some_state   = Float64[ rand(r) for r in d.grid ]
-some_control = d.initial(some_state)
-
-@time expected_bellman_value(d1, valuefn, samples, [2.0, 1.0], zeros(2))
-@time expected_bellman_gradient(d1, valuefn, samples, [2.0, 1.0], zeros(2))
-@time optimize_bellman(d1, valuefn, samples, zeros(2))
-@time approximate_bellman(d1, valuefn, samples)

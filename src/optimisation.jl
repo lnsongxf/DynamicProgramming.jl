@@ -15,23 +15,8 @@ function MathProgBase.initialize(d::BellmanIteration, requested_features::Vector
     end
 end
 
-function MathProgBase.eval_f(bell::BellmanIteration, control)
-    return bell.d.reward(bell.state, control) +
-        bell.d.beta*expected_bellman_value(bell.d, bell.valuefn, bell.samples, bell.state, control)
-end
-
-function MathProgBase.eval_grad_f(bell::BellmanIteration, g, k)
-    ForwardDiff.gradient!(g, k->bell.d.reward(bell.state, k), k)
-    g[:] += bell.d.beta*expected_bellman_gradient(bell.d, bell.valuefn, bell.samples, bell.state, k)
-    return g
-end
-
-MathProgBase.jac_structure(d::BellmanIteration) = [],[]
-
-function MathProgBase.eval_jac_g(bell::BellmanIteration, J, )
-    ForwardDiff.jacobian!(j, k->bell.d.constraint(bell.state, k), k)
-end
-
-function MathProgBase.eval_g(bell::BellmanIteration, g, k)
-    bell.d.constraint(bell.state, control, g)
-end
+MathProgBase.eval_f(bell::BellmanIteration, u)         = bellman_value(bell.d, bell.valuefn, bell.samples, bell.state, u)
+MathProgBase.eval_grad_f(bell::BellmanIteration, g, u) = bellman_gradient!(bell.d, bell.valuefn, bell.samples, bell.state, u, g)
+MathProgBase.jac_structure(d::BellmanIteration)        = [],[]
+MathProgBase.eval_jac_g(bell::BellmanIteration, J, u)  = ()
+MathProgBase.eval_g(bell::BellmanIteration, g, k)      = ()

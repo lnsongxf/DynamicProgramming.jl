@@ -1,12 +1,14 @@
 module DynamicProgramming
 
-using MathProgBase, ForwardDiff, Iterators, Ipopt, Interpolations
+using MathProgBase, Ipopt, ForwardDiff, Iterators, Interpolations
 
 # types
+export dynamic_programming
 export UnconstrainedDynamicProgramming
 
 # bellman things
-export expected_bellman_value, expected_bellman_gradient, optimize_bellman, evaluate_bellman_on_grid, approximate_bellman
+export bellman_value, bellman_gradient, optimize_bellman
+export approximate_bellman_operator, iterate_bellman_operator
 
 include("common.jl")
 include("bellmanoperator.jl")
