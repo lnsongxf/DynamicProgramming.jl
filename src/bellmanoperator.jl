@@ -102,7 +102,7 @@ function iterate_bellman_operator{T}(d::AbstractDynamicProgramming{T}, shocks::V
         new_state = approximate_bellman_operator(d, old_state, shocks)
 
         if verbose
-            @printf "iteration: %s \tfrobenius norm: %0.2f\tapprox. sup norm: %0.4f\n" pretty_integer(i) vecnorm(old_state-new_state) maximum(abs(old_state-new_state))
+            @printf "bellman iteration: %s\tfrobenius norm: %0.2f\tapprox. sup norm: %0.4f\n" i vecnorm(old_state-new_state) maximum(abs(old_state-new_state))
         end
 
         old_state = new_state

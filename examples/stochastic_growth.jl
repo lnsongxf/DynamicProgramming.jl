@@ -1,3 +1,4 @@
+
 using DynamicProgramming, Gadfly, Distributions
 
 # it can help troubleshooting to write functions like this
@@ -19,8 +20,8 @@ initial(state)      = collect(state[1]/2) # specifies a feasible control for a g
 bounds = fill(0.0, 1), fill(Inf, 1)
 grid   = 0.5:0.1:10.0
 interp = Interpolations.BSpline(Interpolations.Linear())
-d      = dynamic_programming(reward, transition, initial, β, discretization, 1, 1, control_bounds = bounds, interpolation = interp)
+d      = dynamic_programming(reward, transition, initial, β, grid, 1, 1, control_bounds = bounds, interpolation = interp)
 shocks = rand(LogNormal(), 100)
 vfn    = iterate_bellman_operator(d, shocks, 50, verbose = true)
 
-plot(x->f[x], 0.5,10)
+plot(x->vfn[x], 0.5,10)
