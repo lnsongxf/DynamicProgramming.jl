@@ -38,6 +38,15 @@ end
 
 num_const(d::UnconstrainedDynamicProgramming) = 0
 
+function superscript(i::Int)
+    sup_script = Dict{AbstractString, AbstractString}("0"=>"⁰","1"=>"¹","2"=>"²","3"=>"³","4"=>"⁴","5"=>"⁵","6"=>"⁶","7"=>"⁷","8"=>"⁸","9"=>"⁹")
+    i_string = string(i)
+    for (k,v) in sup_script
+        i_string = replace(i_string, k, v)
+    end
+    return i_string
+end
+
 function Base.show(io::IO, d::AbstractDynamicProgramming)
     @printf io "%s\n" typeof(d)
 
@@ -46,18 +55,18 @@ function Base.show(io::IO, d::AbstractDynamicProgramming)
     else
         d.grid, length(product(d.grid...))
     end
-
-    @printf io " discount factor: %.2f\n" d.beta
-    @printf io " discretization: %s (%d points)\n" grid_range grid_points
+    @printf io " 𝑇𝑣 = 𝑥 ↦ max{ 𝑟(𝑥,𝑢) + 𝛽∫𝑣[𝑓(𝑥,𝑢,𝜀)]𝜇(d𝜀) }\n"
+    @printf io " discount factor: 𝛽 = %.2f\n" d.beta
+    @printf io "      dimensions: 𝑥 ∈ ℝ%s (state), 𝑢 ∈ ℝ%s (control)\n" superscript(d.state_dim) superscript(d.control_dim)
+    @printf io "  control bounds: %sᵀ ≤ 𝑢 ≤ %sᵀ\n" first(d.control_bounds) last(d.control_bounds)
+    @printf io "\n"
     @printf io " approximation: %s\n" typeof(d.interp)
-    @printf io " dimension: %d state(s), %d control(s)\n"   d.state_dim d.control_dim
-    @printf io " control bounds: %sᵀ ≤ 𝑢 ≤ %sᵀ\n" first(d.control_bounds) last(d.control_bounds)
+    @printf io "     %s (%d points)\n" grid_range grid_points
     @printf io " solver: %s\n" typeof(d.solver)
-
     if !isempty(d.solver.options)
-        maxl = maximum([length(string(k)) for (k,v) in d.solver.options])
+        maxl = maximum([length(string(k)) for (k,_) in d.solver.options])
         for (k,v) in d.solver.options
-            @printf io "    %s = %s\n" lpad(string(k), maxl,' ') v
+            @printf io "     %s = %s\n" lpad(string(k), maxl,' ') v
         end
     end
 end
@@ -68,13 +77,15 @@ function dynamic_programming{T}(reward::Function,
                                 initial::Function,
                                 beta::Real,
                                 grid::Union{Range{T}, GridSpace{T}},
-                                control_dim::Int = isa(grid, GridSpace) ? length(grid) : 1; # defaults to the state dimension, as inferred via the grid
+                                state_dim::Int,
+                                control_dim::Int = state_dim; # defaults to the state dimension
                                 control_bounds::ControlBounds{T} = (fill(typemin(T), control_dim), fill(typemax(T), control_dim)),
                                 solver::MathProgBase.AbstractMathProgSolver = Ipopt.IpoptSolver(print_level = 0, tol = 1e-2, max_iter=500),
                                 interpolation::Interpolations.Interpolations.BSpline = BSpline(Linear())
                                 )
     _grid = isa(grid, GridSpace) ? grid : (grid,)
-    state_dim   = length(_grid)
+    @assert state_dim == length(_grid) "State discretization dimension must match specified state dimension: got
+    grid dimensions = $(length(_grid)), state dimensions = $state_dim"
 
     return UnconstrainedDynamicProgramming{T}(reward, transition, initial, beta, _grid, state_dim, control_dim, control_bounds, solver, interpolation)
 end

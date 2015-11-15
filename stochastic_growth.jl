@@ -22,5 +22,4 @@ d1     = dynamic_programming(reward, transition, initial, β, discretization, 1,
 shocks = rand(LogNormal(), 100)
 vfn    = iterate_bellman_operator(d1, shocks, 50, verbose = true)
 
-Gadfly.plot(f::Interpolations.Interpolations.ScaledInterpolation, args...) = Gadfly.plot(x->f[x], args...)
-plot(vfn, 0.5,10)
+plot(x->vfn[x], 0.5,10)

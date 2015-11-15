@@ -42,8 +42,8 @@ function bellman_gradient!{T}(d::AbstractDynamicProgramming{T},
         new_state[:] = d.transition(state, control, ε)
 
         ForwardDiff.jacobian!(jac, u->d.transition(state, u, ε), control)
-
         Interpolations.gradient!(vfn_g, valuefn, new_state...)
+
         g[:] += jac' * vfn_g
     end
     g[:] *= coeff
@@ -70,9 +70,10 @@ function approximate_bellman_operator{T}(d::AbstractDynamicProgramming{T},
     vals = Array{T}(length_per_dim...)
     args = Array{Vector{T}}(length_per_dim...)
     for (i, state) in enumerate(product(d.grid...))
-        verbose && @show i, state
+        verbose && @printf "now approximating state: %s\r" state
         vals[i], args[i] = optimize_bellman(d, valuefn, shocks, collect(state))
     end
+    @printf ""
 
     new_valuefn = scale(interpolate!(vals, BSpline(Linear()), OnGrid()), d.grid...)
     return new_valuefn
@@ -174,7 +175,7 @@ function iterate_bellman_operator{T}(d::AbstractDynamicProgramming{T}, shocks::V
         new_state = approximate_bellman_operator(d, old_state, shocks)
 
         if verbose
-            @printf "iteration: %s \tfrobenius norm: %0.4f\t\tapprox. sup norm: %0.4f\n" pretty_integer(i) vecnorm(old_state - new_state) maximum(abs(old_state - new_state))
+            @printf "iteration: %s \tfrobenius norm: %0.4f\t\tapprox. sup norm: %0.4f\n" pretty_integer(i) vecnorm(old_state-new_state) maximum(abs(old_state-new_state))
         end
 
         old_state = new_state
