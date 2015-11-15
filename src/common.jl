@@ -38,7 +38,7 @@ end
 
 num_const(d::UnconstrainedDynamicProgramming) = 0
 
-function superscript(i::Int)
+function superscript(i)
     sup_script = Dict{AbstractString, AbstractString}("0"=>"⁰","1"=>"¹","2"=>"²","3"=>"³","4"=>"⁴","5"=>"⁵","6"=>"⁶","7"=>"⁷","8"=>"⁸","9"=>"⁹")
     i_string = string(i)
     for (k,v) in sup_script
