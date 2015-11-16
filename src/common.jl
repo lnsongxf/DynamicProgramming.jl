@@ -38,6 +38,42 @@ end
 
 num_const(d::UnconstrainedDynamicProgramming) = 0
 
+type ConstrainedDynamicProgramming{T} <: AbstractDynamicProgramming{T}
+    reward::Function                   # two argument function, must return a real number                         reward(state::Vector, control::Vector)
+    transition::Function               # three argument function, must return a vector                            transition(state::Vector, control::Vector, shock)
+    constraint::Function               # two argument function, must return a vector ≤ 0 when control is feasible constraint(state::Vector, control::Vector)
+    initial::Function                  # specifies a feasible point, must return a vector                         initial(state::Vector) = control
+    beta::Real                         # discounting factor
+
+    grid::GridSpace{T}                 # discretization of the state space
+    state_dim::Int                     # dimension of the state space
+    control_dim::Int                   # dimension of the control space
+
+    control_bounds::ControlBounds{T}   # left and right bounds on the control variable, defulat ([typemin(T)], [typemax(T)])
+    solver::MathProgBase.AbstractMathProgSolver
+    interp::Interpolations.BSpline
+
+    function ConstrainedDynamicProgramming{T}(reward,
+                                              transition,
+                                              constraint,
+                                              initial,
+                                              beta,
+                                              grid::GridSpace{T},
+                                              state_dim::Int,
+                                              control_dim::Int,
+                                              control_bounds::ControlBounds{T},
+                                              solver::MathProgBase.AbstractMathProgSolver,
+                                              interp::Interpolations.BSpline)
+
+        @assert 0 < beta < 1 "Beta must be between zero and one: got beta = $beta"
+        @assert state_dim == length(grid) "State discretization dimension must match specified state dimension: got
+        grid dimensions = $(length(grid)), state dimensions = $state_dim"
+
+        new{T}(reward, transition, constraint, initial, beta, grid, state_dim, control_dim, control_bounds, solver, interp)
+    end
+end
+
+
 function superscript(i)
     sup_script = Dict{AbstractString, AbstractString}("0"=>"⁰","1"=>"¹","2"=>"²","3"=>"³","4"=>"⁴","5"=>"⁵","6"=>"⁶","7"=>"⁷","8"=>"⁸","9"=>"⁹")
     i_string = string(i)
@@ -71,6 +107,9 @@ function Base.show(io::IO, d::AbstractDynamicProgramming)
     end
 end
 
+# this is not correct, need
+num_const(d::ConstrainedDynamicProgramming) = 1
+
 # user friendly interface
 function dynamic_programming{T}(reward::Function,
                                 transition::Function,
@@ -79,14 +118,19 @@ function dynamic_programming{T}(reward::Function,
                                 grid::Union{Range{T}, GridSpace{T}},
                                 state_dim::Int,
                                 control_dim::Int = state_dim; # defaults to the state dimension
+                                constraint = nothing,
                                 control_bounds::ControlBounds{T} = (fill(typemin(T), control_dim), fill(typemax(T), control_dim)),
                                 solver::MathProgBase.AbstractMathProgSolver = Ipopt.IpoptSolver(print_level = 0, tol = 1e-2, max_iter=500),
                                 interpolation::Interpolations.Interpolations.BSpline = BSpline(Linear())
                                 )
+
     _grid = isa(grid, GridSpace) ? grid : (grid,)
     @assert state_dim == length(_grid) "State discretization dimension must match specified state dimension: got
     grid dimensions = $(length(_grid)), state dimensions = $state_dim"
-
-    return UnconstrainedDynamicProgramming{T}(reward, transition, initial, beta, _grid, state_dim, control_dim, control_bounds, solver, interpolation)
+    if constraint == nothing
+        return UnconstrainedDynamicProgramming{T}(reward, transition, initial, beta, _grid, state_dim, control_dim, control_bounds, solver, interpolation)
+    else
+        return ConstrainedDynamicProgramming{T}(reward, transition, constraint, initial, beta, _grid, state_dim, control_dim, control_bounds, solver, interpolation)
+    end
 end
 

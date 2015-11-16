@@ -64,14 +64,19 @@ end
 function approximate_bellman_operator{T}(d::AbstractDynamicProgramming{T},
                                          valuefn::ValueFunction,
                                          shocks::Vector;
-                                         verbose = false
+                                         verbose = false,
+                                         gridsearch = false
                                          )
     length_per_dim = map(length, d.grid)
     vals = Array{T}(length_per_dim...)
     args = Array{Vector{T}}(length_per_dim...)
     for (i, state) in enumerate(product(d.grid...))
         verbose && @printf "now approximating state: %s\r" state
-        vals[i], args[i] = optimize_bellman(d, valuefn, shocks, collect(state))
+        vals[i], args[i] = if !gridsearch
+            optimize_bellman(d, valuefn, shocks, collect(state))
+        else
+            optimize_bellman_with_gridsearch(d, valuefn, shocks, collect(state))
+        end
     end
     @printf ""
 
@@ -94,16 +99,21 @@ function approximate_bellman_operator{T}(d::AbstractDynamicProgramming{T}, shock
     return new_valuefn
 end
 
-function iterate_bellman_operator{T}(d::AbstractDynamicProgramming{T}, shocks::Vector, t::Integer; verbose = false)
+function iterate_bellman_operator{T}(d::AbstractDynamicProgramming{T}, shocks::Vector, t::Integer; verbose = false, history = nothing)
     init  = approximate_bellman_operator(d, shocks)
 
+
     old_state = init
+    isa(history, Vector) && push!(history, old_state)
+
     for i = 1:t
         new_state = approximate_bellman_operator(d, old_state, shocks)
 
         if verbose
             @printf "bellman iteration: %s\tfrobenius norm: %0.2f\tapprox. sup norm: %0.4f\n" i vecnorm(old_state-new_state) maximum(abs(old_state-new_state))
         end
+
+        isa(history, Vector) && push!(history, new_state)
 
         old_state = new_state
     end
