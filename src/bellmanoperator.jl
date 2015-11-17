@@ -1,5 +1,3 @@
-typealias ValueFunction Interpolations.ScaledInterpolation
-
 function bellman_value{T}(d::AbstractDynamicProgramming{T},
                           valuefn::ValueFunction,
                           shocks::Vector,
@@ -84,6 +82,26 @@ function approximate_bellman_operator{T}(d::AbstractDynamicProgramming{T},
     return new_valuefn
 end
 
+
+function optimize_bellman_with_gridsearch(d::AbstractDynamicProgramming,
+                                          valuefn::ValueFunction,
+                                          shocks::Vector,
+                                          state::Vector)
+    bell = BellmanIteration(d, valuefn, shocks, state)
+    n = 200
+    control_grid = linspace(0,first(state),n)
+    vals = Vector{Float64}(length(control_grid))
+
+    for (i,u) in enumerate(control_grid)
+        vals[i] =  MathProgBase.eval_f(bell, collect(u))
+    end
+
+    v,i = findmax(vals)
+    return v, collect((control_grid)[i])
+end
+
+
+
 # method to supply the initial guess for the bellman,
 # use the reward function with some state
 function approximate_bellman_operator{T}(d::AbstractDynamicProgramming{T}, shocks::Vector)
@@ -99,7 +117,7 @@ function approximate_bellman_operator{T}(d::AbstractDynamicProgramming{T}, shock
     return new_valuefn
 end
 
-function iterate_bellman_operator{T}(d::AbstractDynamicProgramming{T}, shocks::Vector, t::Integer; verbose = false, history = nothing)
+function iterate_bellman_operator{T}(d::AbstractDynamicProgramming{T}, shocks::Vector, t::Integer; verbose = false, history = nothing, gridsearch = false)
     init  = approximate_bellman_operator(d, shocks)
 
 
@@ -107,13 +125,13 @@ function iterate_bellman_operator{T}(d::AbstractDynamicProgramming{T}, shocks::V
     isa(history, Vector) && push!(history, old_state)
 
     for i = 1:t
-        new_state = approximate_bellman_operator(d, old_state, shocks)
+        t = @timed (new_state = approximate_bellman_operator(d, old_state, shocks, gridsearch = gridsearch))
 
         if verbose
             @printf "bellman iteration: %s\tfrobenius norm: %0.2f\tapprox. sup norm: %0.4f\n" i vecnorm(old_state-new_state) maximum(abs(old_state-new_state))
         end
 
-        isa(history, Vector) && push!(history, new_state)
+        isa(history, Vector) && push!(history, (new_state, t))
 
         old_state = new_state
     end

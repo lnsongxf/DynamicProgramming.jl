@@ -1,5 +1,5 @@
 abstract AbstractDynamicProgramming{T<:AbstractFloat}
-
+typealias ValueFunction Interpolations.ScaledInterpolation
 typealias GridSpace{T<:AbstractFloat} Tuple{Vararg{Range{T}}}
 typealias ControlBounds{T} Tuple{Vector{T}, Vector{T}}
 

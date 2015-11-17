@@ -11,7 +11,7 @@ export bellman_value, bellman_gradient, optimize_bellman
 export approximate_bellman_operator, iterate_bellman_operator
 
 include("common.jl")
-include("bellmanoperator.jl")
 include("optimisation.jl")
+include("bellmanoperator.jl")
 
 end # module
